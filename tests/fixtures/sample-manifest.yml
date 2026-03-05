@@ -16,6 +16,7 @@ environments:
         service: test-apim
         subscription_id: test-sub
         key: primary
+        azure_subscription: INZ_PaaS_SHARED_SIT
       - name: baseurl
         value: https://example.com
         secret: false

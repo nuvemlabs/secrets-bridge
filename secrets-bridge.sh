@@ -215,7 +215,9 @@ for s in secrets:
         svc = s.get('service', '')
         sub_id = s.get('subscription_id', '')
         key = s.get('key', 'primary')
-        print(f'  {name:<35s} {source:<20s} {svc}/{sub_id} ({key})')
+        azure_sub = s.get('azure_subscription', '')
+        extra = f' [{azure_sub}]' if azure_sub else ''
+        print(f'  {name:<35s} {source:<20s} {svc}/{sub_id} ({key}){extra}')
     elif source == 'apim-named-value':
         fetch_count += 1
         rg = s.get('resource_group', '')
@@ -281,6 +283,17 @@ cmd_fetch() {
             continue
         fi
 
+        # Check for per-secret subscription override
+        local secret_subscription
+        secret_subscription=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('azure_subscription',''))")
+        if [[ -n "$secret_subscription" && "$secret_subscription" != "$subscription" ]]; then
+            provider_azure_set_subscription "$secret_subscription" || {
+                printf "[%d/%d] Fetching %s from %s... FAILED (subscription switch)\n" "$idx" "$total" "$name" "$source"
+                failed=$((failed + 1))
+                continue
+            }
+        fi
+
         printf "[%d/%d] Fetching %s from %s... " "$idx" "$total" "$name" "$source"
 
         local fetched_value=""
@@ -317,6 +330,11 @@ cmd_fetch() {
         else
             echo "FAILED"
             failed=$((failed + 1))
+        fi
+
+        # Switch back to environment subscription if we changed it
+        if [[ -n "$secret_subscription" && "$secret_subscription" != "$subscription" && -n "$subscription" ]]; then
+            provider_azure_set_subscription "$subscription" &>/dev/null
         fi
     done < <(echo "$secrets_json" | python3 -c "
 import json, sys

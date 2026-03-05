@@ -99,16 +99,21 @@ assert_contains "plan shows SOURCE header" "SOURCE" "$result"
 assert_contains "plan shows keyvault secret" "client_secret_td" "$result"
 assert_contains "plan shows static" "baseurl" "$result"
 
-# Test 7: unknown command returns exit 1
-echo "Test 7: unknown command"
+# Test 7: plan shows azure_subscription override for APIM entries
+echo "Test 7: plan shows subscription override"
+result=$(bash "$CLI" --manifest "$MANIFEST" plan sit 2>&1)
+assert_contains "plan shows subscription override" "[INZ_PaaS_SHARED_SIT]" "$result"
+
+# Test 8: unknown command returns exit 1
+echo "Test 8: unknown command"
 assert_exit_code "unknown command exits 1" 1 bash "$CLI" --manifest "$MANIFEST" notacommand
 
-# Test 8: --manifest with nonexistent file
-echo "Test 8: --manifest with bad path"
+# Test 9: --manifest with nonexistent file
+echo "Test 9: --manifest with bad path"
 assert_exit_code "bad manifest path" 1 bash "$CLI" --manifest "/tmp/nonexistent-manifest.yml" validate
 
-# Test 9: plan without env arg
-echo "Test 9: plan without env"
+# Test 10: plan without env arg
+echo "Test 10: plan without env"
 assert_exit_code "plan no env" 1 bash "$CLI" --manifest "$MANIFEST" plan
 
 echo ""
