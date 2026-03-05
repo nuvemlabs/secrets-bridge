@@ -1,0 +1,19 @@
+{
+  "id": "td-postman-sit",
+  "name": "SIT",
+  "values": [
+    {
+      "key": "client_secret_td",
+      "value": "test-secret-value",
+      "enabled": true,
+      "type": "secret"
+    },
+    {
+      "key": "baseurl",
+      "value": "https://example.com",
+      "enabled": true,
+      "type": "default"
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}
