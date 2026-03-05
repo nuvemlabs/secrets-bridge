@@ -1,0 +1,26 @@
+project: td-postman
+default_provider: azure
+
+environments:
+  sit:
+    azure:
+      subscription: INZ_TDS_SIT
+    secrets:
+      - name: client_secret_td
+        source: keyvault
+        vault: inz-tds-ae-td-kv-sit
+        secret: client-secret-td
+      - name: apim-key
+        source: apim-subscription
+        resource_group: test-rg
+        service: test-apim
+        subscription_id: test-sub
+        key: primary
+      - name: baseurl
+        value: https://example.com
+        secret: false
+    outputs:
+      - format: postman
+        file: envs/SIT.postman_environment.json
+      - format: dotenv
+        file: .env.sit
