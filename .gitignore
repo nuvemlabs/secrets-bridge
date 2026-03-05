@@ -1,0 +1,5 @@
+*.bak
+*.tmp
+.DS_Store
+.env.*
+*.postman_environment.json
