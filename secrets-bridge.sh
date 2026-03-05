@@ -272,12 +272,16 @@ cmd_fetch() {
         name=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))")
         source=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('source',''))")
         value=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('value',''))")
+        local has_value
+        has_value=$(echo "$secret_line" | python3 -c "import sys,json; print('true' if 'value' in json.load(sys.stdin) else 'false')")
         is_secret=$(echo "$secret_line" | python3 -c "import sys,json; d=json.load(sys.stdin); print('false' if d.get('secret') == False else 'true')")
 
-        # Static value (has value field, no source)
-        if [[ -n "$value" && -z "$source" ]]; then
+        # Static value (has value key in manifest, no source)
+        if [[ "$has_value" == "true" && -z "$source" ]]; then
             printf "[%d/%d] Static %s... " "$idx" "$total" "$name"
-            secret_set "$name" "$value"
+            if [[ -n "$value" ]]; then
+                secret_set "$name" "$value"
+            fi
             echo "OK"
             static_count=$((static_count + 1))
             continue
