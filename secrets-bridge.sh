@@ -1,7 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-BRIDGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_bridge_source="${BASH_SOURCE[0]}"
+while [[ -L "$_bridge_source" ]]; do
+    _bridge_source="$(readlink "$_bridge_source")"
+done
+BRIDGE_DIR="$(cd "$(dirname "$_bridge_source")" && pwd)"
+unset _bridge_source
 BRIDGE_VERSION="1.0.0"
 
 # ---------------------------------------------------------------------------
