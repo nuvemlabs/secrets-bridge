@@ -1,0 +1,60 @@
+project: sources-test
+default_provider: wallet
+
+environments:
+  caddy:
+    secrets:
+      - name: AZURE_CLIENT_SECRET
+        sources:
+          - source: wallet
+            service: homelab
+            key: caddy-client-secret
+          - source: keyvault
+            vault: kv-home
+            secret: caddy-client-secret
+      - name: AZURE_TENANT_ID
+        value: tenant-1
+        secret: false
+    outputs:
+      - format: dotenv
+        file: .env.caddy
+
+  torrent:
+    secrets:
+      - name: GRAFANA_USER
+        source: wallet
+        service: homelab
+        key: grafana-user
+      - name: GRAFANA_PASSWORD
+        source: bitwarden
+        item: homelab/grafana
+      - name: TMDB_API_KEY
+        source: bw
+        item: homelab/tmdb
+        field: api_key
+    outputs:
+      - format: dotenv
+        file: .env.torrent
+
+  terraform:
+    secrets:
+      - name: TF_VAR_proxmox_api_token
+        source: azure-keyvault
+        vault: kv-home
+        secret: pve-token
+    outputs:
+      - format: dotenv
+        file: .env.terraform
+
+  broken:
+    secrets:
+      - name: NOWHERE
+        sources:
+          - source: wallet
+            service: homelab
+            key: does-not-exist
+          - source: bitwarden
+            item: homelab/does-not-exist
+    outputs:
+      - format: dotenv
+        file: .env.broken

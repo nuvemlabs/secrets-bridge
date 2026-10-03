@@ -94,6 +94,7 @@ secrets-bridge sync sit
 | Option | Description |
 |--------|-------------|
 | `--manifest <path>` | Path to manifest file (default: `./.secrets-manifest.yml`) |
+| `--source <type>` | Only use one source type for this run, e.g. `wallet` or `keyvault` (env: `SECRETS_BRIDGE_SOURCE`). Secrets without that source are skipped, not failed. |
 
 ## Manifest Reference
 
@@ -155,7 +156,8 @@ environments:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | yes | Variable name used in output files |
-| `source` | for cloud secrets | `keyvault`, `apim-subscription`, or `apim-named-value` |
+| `source` | for fetched secrets | `keyvault`, `wallet`, `bitwarden`, `apim-subscription`, or `apim-named-value` |
+| `sources` | alternative to `source` | Ordered list of source specs; the first one that returns a value wins |
 | `value` | for static values | Literal value (not fetched from cloud) |
 | `secret` | no | `false` marks as non-secret (type=default in Postman). Default: `true` |
 
@@ -164,6 +166,29 @@ environments:
 **APIM subscription fields:** `resource_group`, `service`, `subscription_id`, `key` (primary/secondary)
 
 **APIM named value fields:** `resource_group`, `service`, `named_value_id`
+
+**Wallet fields:** `service` (wallet namespace, default `$SECRETS_BRIDGE_WALLET_SERVICE` or `secrets`), `key`.
+Reads the local OS wallet through nuvemlabs/secrets: macOS Keychain, Linux libsecret
+(GNOME Keyring / KWallet), Windows Credential Manager. Store a value with
+`SECRETS_SERVICE=<service> secret_set <key> <value>`.
+
+**Bitwarden fields:** `item` (name or id), `field` (`password` default, `username`, `notes`, `totp`,
+or a custom field name). Needs the `bw` CLI with an unlocked vault (`export BW_SESSION="$(bw unlock --raw)"`).
+
+Aliases: `azure-keyvault` = `keyvault`, `keychain`/`libsecret` = `wallet`, `bw` = `bitwarden`.
+
+**Fallback chain** — local wallet first, Azure Key Vault when the wallet has no entry:
+
+```yaml
+      - name: AZURE_CLIENT_SECRET
+        sources:
+          - source: wallet
+            service: homelab
+            key: caddy-azure-client-secret
+          - source: keyvault
+            vault: kv-homelab
+            secret: caddy-azure-client-secret
+```
 
 ## Azure Setup
 

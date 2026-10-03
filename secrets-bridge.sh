@@ -46,6 +46,8 @@ unset _secrets_lib_found
 # ---------------------------------------------------------------------------
 
 source "$BRIDGE_DIR/providers/azure.sh"
+source "$BRIDGE_DIR/providers/wallet.sh"
+source "$BRIDGE_DIR/providers/bitwarden.sh"
 source "$BRIDGE_DIR/outputs/postman.sh"
 source "$BRIDGE_DIR/outputs/bruno.sh"
 source "$BRIDGE_DIR/outputs/dotenv.sh"
@@ -55,6 +57,8 @@ source "$BRIDGE_DIR/outputs/dotenv.sh"
 # ---------------------------------------------------------------------------
 
 _MANIFEST_PATH=""
+# Restrict fetch/plan to one source type (--source or SECRETS_BRIDGE_SOURCE)
+_SOURCE_FILTER="${SECRETS_BRIDGE_SOURCE:-}"
 
 _find_manifest() {
     if [[ -n "$_MANIFEST_PATH" ]]; then
@@ -95,6 +99,17 @@ Commands:
 
 Options:
   --manifest <path> Path to manifest file (default: ./.secrets-manifest.yml)
+  --source <type>   Only use this source type: wallet, keyvault, bitwarden,
+                    apim-subscription, apim-named-value (env: SECRETS_BRIDGE_SOURCE)
+
+Sources:
+  keyvault          Azure Key Vault (az CLI)           fields: vault, secret
+  wallet            Local OS wallet: macOS Keychain,   fields: service, key
+                    Linux libsecret, Windows CredMgr
+  bitwarden         Bitwarden/Vaultwarden (bw CLI)     fields: item, field
+  apim-subscription Azure APIM subscription key
+  apim-named-value  Azure APIM named value
+  A secret may list several under 'sources:'; they are tried in order.
   --version         Print version
   --help            Show this help message
 
@@ -102,6 +117,7 @@ Examples:
   secrets-bridge validate
   secrets-bridge plan sit
   secrets-bridge sync sit
+  secrets-bridge --source wallet sync sit
   secrets-bridge status sit
 EOF
 }
@@ -139,14 +155,43 @@ cmd_validate() {
     echo "Provider: $default_provider"
     echo ""
 
-    # Check provider tools
-    if [[ "$default_provider" == "azure" ]]; then
-        if command -v az &>/dev/null; then
-            echo "Provider check: az CLI found"
-        else
-            echo "Provider check: az CLI NOT found (required for Azure provider)"
-        fi
-    fi
+    # Check the tool behind every source type the manifest uses
+    local used_sources
+    used_sources=$(echo "$envs_json" | python3 -c "
+import json, subprocess, sys
+used = set()
+for env in json.load(sys.stdin):
+    out = subprocess.run([sys.executable, sys.argv[1], sys.argv[2], 'fetch-plan', env],
+                         capture_output=True, text=True, check=True).stdout
+    for line in out.splitlines():
+        for sp in json.loads(line)['sources']:
+            used.add(sp['source'])
+print(' '.join(sorted(used)))
+" "$BRIDGE_DIR/lib/manifest.py" "$_MANIFEST_PATH")
+    [[ "$default_provider" == "azure" ]] && used_sources+=" keyvault"
+
+    local src
+    for src in $(tr ' ' '\n' <<< "$used_sources" | sort -u); do
+        case "$src" in
+            keyvault|apim-subscription|apim-named-value)
+                command -v az &>/dev/null \
+                    && echo "Provider check ($src): az CLI found" \
+                    || echo "Provider check ($src): az CLI NOT found"
+                ;;
+            wallet)
+                echo "Provider check (wallet): backend $(provider_wallet_backend)"
+                ;;
+            bitwarden)
+                command -v bw &>/dev/null \
+                    && echo "Provider check (bitwarden): bw CLI found" \
+                    || echo "Provider check (bitwarden): bw CLI NOT found"
+                ;;
+            *)
+                echo "Provider check ($src): UNKNOWN source type" >&2
+                return 1
+                ;;
+        esac
+    done
 
     echo ""
     echo "Environments ($env_count):"
@@ -179,63 +224,117 @@ cmd_plan() {
     project=$(echo "$project_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('project',''))")
     default_provider=$(echo "$project_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('default_provider',''))")
 
-    local secrets_json
-    secrets_json=$(_parse_manifest secrets "$env")
+    local plan_lines
+    plan_lines=$(_parse_manifest fetch-plan "$env" "$_SOURCE_FILTER") || return 1
 
-    echo "Project: $project | Environment: $env | Provider: $default_provider"
+    echo "Project: $project | Environment: $env | Provider: $default_provider${_SOURCE_FILTER:+ | Source filter: $_SOURCE_FILTER}"
     echo ""
-
-    # Print table header
     printf "  %-35s %-20s %s\n" "NAME" "SOURCE" "RESOURCE"
     echo ""
 
-    local total=0 to_fetch=0 static_count=0
-
-    # Parse each secret and print a row
-    python3 -c "
+    printf '%s\n' "$plan_lines" | python3 -c "
 import json, sys
-secrets = json.loads(sys.argv[1])
-total = len(secrets)
-fetch_count = 0
-static_count = 0
-for s in secrets:
-    name = s.get('name', '')
-    source = s.get('source', '')
-    value = s.get('value', '')
-    is_static = bool(value) and not source
 
-    if is_static:
+def describe(sp):
+    src = sp.get('source', '')
+    if src == 'keyvault':
+        return f\"{sp.get('vault', '')}/{sp.get('secret', '')}\"
+    if src == 'apim-subscription':
+        sub = sp.get('azure_subscription', '')
+        extra = f' [{sub}]' if sub else ''
+        return f\"{sp.get('service', '')}/{sp.get('subscription_id', '')} ({sp.get('key', 'primary')}){extra}\"
+    if src == 'apim-named-value':
+        return f\"{sp.get('service', '')}/{sp.get('named_value_id', '')}\"
+    if src == 'wallet':
+        svc = sp.get('service') or sys.argv[1]
+        return f\"{svc}/{sp.get('key', '')}\"
+    if src == 'bitwarden':
+        return f\"{sp.get('item', '')} ({sp.get('field', 'password')})\"
+    return '(unknown)'
+
+total = fetch_count = static_count = skip_count = 0
+for line in sys.stdin:
+    if not line.strip():
+        continue
+    e = json.loads(line)
+    total += 1
+    name = e['name']
+    if e['static']:
         static_count += 1
-        # Truncate static values for display
-        display_val = value if len(str(value)) <= 30 else str(value)[:27] + '...'
-        print(f'  {name:<35s} {\"static\":<20s} {display_val}')
-    elif source == 'keyvault':
-        fetch_count += 1
-        vault = s.get('vault', '')
-        secret_name = s.get('secret', '')
-        print(f'  {name:<35s} {source:<20s} {vault}/{secret_name}')
-    elif source == 'apim-subscription':
-        fetch_count += 1
-        rg = s.get('resource_group', '')
-        svc = s.get('service', '')
-        sub_id = s.get('subscription_id', '')
-        key = s.get('key', 'primary')
-        azure_sub = s.get('azure_subscription', '')
-        extra = f' [{azure_sub}]' if azure_sub else ''
-        print(f'  {name:<35s} {source:<20s} {svc}/{sub_id} ({key}){extra}')
-    elif source == 'apim-named-value':
-        fetch_count += 1
-        rg = s.get('resource_group', '')
-        svc = s.get('service', '')
-        nv_id = s.get('named_value_id', '')
-        print(f'  {name:<35s} {source:<20s} {svc}/{nv_id}')
-    else:
-        fetch_count += 1
-        print(f'  {name:<35s} {source:<20s} (unknown)')
+        v = e['value']
+        shown = v if len(v) <= 30 else v[:27] + '...'
+        print(f'  {name:<35s} {\"static\":<20s} {shown}')
+        continue
+    specs = e['sources']
+    if not specs:
+        skip_count += 1
+        print(f'  {name:<35s} {\"(skipped)\":<20s} no matching source')
+        continue
+    fetch_count += 1
+    for i, sp in enumerate(specs):
+        label = name if i == 0 else '  or'
+        print(f'  {label:<35s} {sp[\"source\"]:<20s} {describe(sp)}')
 
 print()
-print(f'  {total} secrets ({fetch_count} to fetch, {static_count} static)')
-" "$secrets_json"
+print(f'  {total} secrets ({fetch_count} to fetch, {static_count} static, {skip_count} skipped)')
+" "$SECRETS_BRIDGE_WALLET_SERVICE"
+}
+
+# Read one field from a JSON object: _jget <json> <key> [default]
+_jget() {
+    python3 -c "
+import json, sys
+v = json.loads(sys.argv[1]).get(sys.argv[2], sys.argv[3])
+print('' if v is None else v)
+" "$1" "$2" "${3:-}"
+}
+
+# Fetch one value from one source spec (JSON). Prints the value on stdout.
+# $2 is the environment's default Azure subscription.
+_fetch_from_spec() {
+    local spec="$1" env_subscription="$2"
+    local source
+    source=$(_jget "$spec" source)
+
+    case "$source" in
+        keyvault|apim-subscription|apim-named-value)
+            local spec_subscription
+            spec_subscription=$(_jget "$spec" azure_subscription)
+            if [[ -n "$spec_subscription" && "$spec_subscription" != "$env_subscription" ]]; then
+                provider_azure_set_subscription "$spec_subscription" || return 1
+            fi
+            local rc=0
+            case "$source" in
+                keyvault)
+                    provider_azure_fetch keyvault "$(_jget "$spec" vault)" "$(_jget "$spec" secret)" || rc=$?
+                    ;;
+                apim-subscription)
+                    provider_azure_fetch apim-subscription "$(_jget "$spec" resource_group)" \
+                        "$(_jget "$spec" service)" "$(_jget "$spec" subscription_id)" \
+                        "$(_jget "$spec" key primary)" || rc=$?
+                    ;;
+                apim-named-value)
+                    provider_azure_fetch apim-named-value "$(_jget "$spec" resource_group)" \
+                        "$(_jget "$spec" service)" "$(_jget "$spec" named_value_id)" || rc=$?
+                    ;;
+            esac
+            # Switch back to the environment subscription if we changed it
+            if [[ -n "$spec_subscription" && "$spec_subscription" != "$env_subscription" && -n "$env_subscription" ]]; then
+                provider_azure_set_subscription "$env_subscription" &>/dev/null
+            fi
+            return "$rc"
+            ;;
+        wallet)
+            provider_wallet_fetch "$(_jget "$spec" service "$SECRETS_BRIDGE_WALLET_SERVICE")" "$(_jget "$spec" key)"
+            ;;
+        bitwarden)
+            provider_bitwarden_fetch "$(_jget "$spec" item)" "$(_jget "$spec" field password)"
+            ;;
+        *)
+            echo "Error: unknown source '$source'" >&2
+            return 1
+            ;;
+    esac
 }
 
 cmd_fetch() {
@@ -247,9 +346,6 @@ cmd_fetch() {
     project_json=$(_parse_manifest project)
     local project
     project=$(echo "$project_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('project',''))")
-
-    # Set keychain namespace for isolation
-    SECRETS_SERVICE="secrets-bridge:${project}"
 
     # Parse Azure config and set subscription
     local azure_json
@@ -263,26 +359,29 @@ cmd_fetch() {
         }
     fi
 
-    local secrets_json
-    secrets_json=$(_parse_manifest secrets "$env")
+    local plan_lines
+    plan_lines=$(_parse_manifest fetch-plan "$env" "$_SOURCE_FILTER") || return 1
 
-    local total fetched=0 static_count=0 failed=0
-    total=$(echo "$secrets_json" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+    # Set keychain namespace for isolation. Wallet reads use their own
+    # namespace in a subshell, so this cache namespace is never disturbed.
+    SECRETS_SERVICE="secrets-bridge:${project}"
 
-    local idx=0
-    while IFS= read -r secret_line; do
+    local total fetched=0 static_count=0 failed=0 skipped=0
+    total=$(printf '%s\n' "$plan_lines" | grep -c . || true)
+
+    [[ -n "$_SOURCE_FILTER" ]] && echo "Source filter: $_SOURCE_FILTER"
+
+    local idx=0 entry
+    while IFS= read -r entry; do
+        [[ -z "$entry" ]] && continue
         idx=$((idx + 1))
-        local name source value is_secret vault secret_name rg service sub_id key nv_id
-
-        name=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))")
-        source=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('source',''))")
-        value=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('value',''))")
-        local has_value
-        has_value=$(echo "$secret_line" | python3 -c "import sys,json; print('true' if 'value' in json.load(sys.stdin) else 'false')")
-        is_secret=$(echo "$secret_line" | python3 -c "import sys,json; d=json.load(sys.stdin); print('false' if d.get('secret') == False else 'true')")
+        local name is_static value
+        name=$(_jget "$entry" name)
+        is_static=$(_jget "$entry" static)
 
         # Static value (has value key in manifest, no source)
-        if [[ "$has_value" == "true" && -z "$source" ]]; then
+        if [[ "$is_static" == "True" ]]; then
+            value=$(_jget "$entry" value)
             printf "[%d/%d] Static %s... " "$idx" "$total" "$name"
             if [[ -n "$value" ]]; then
                 secret_set "$name" "$value"
@@ -292,68 +391,41 @@ cmd_fetch() {
             continue
         fi
 
-        # Check for per-secret subscription override
-        local secret_subscription
-        secret_subscription=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('azure_subscription',''))")
-        if [[ -n "$secret_subscription" && "$secret_subscription" != "$subscription" ]]; then
-            provider_azure_set_subscription "$secret_subscription" || {
-                printf "[%d/%d] Fetching %s from %s... FAILED (subscription switch)\n" "$idx" "$total" "$name" "$source"
-                failed=$((failed + 1))
-                continue
-            }
+        local specs
+        specs=$(python3 -c "
+import json, sys
+for s in json.loads(sys.argv[1])['sources']:
+    print(json.dumps(s))
+" "$entry")
+
+        if [[ -z "$specs" ]]; then
+            printf "[%d/%d] %s... SKIP (no %s source)\n" "$idx" "$total" "$name" "${_SOURCE_FILTER:-matching}"
+            skipped=$((skipped + 1))
+            continue
         fi
 
-        printf "[%d/%d] Fetching %s from %s... " "$idx" "$total" "$name" "$source"
-
-        local fetched_value=""
-        case "$source" in
-            keyvault)
-                vault=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('vault',''))")
-                secret_name=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('secret',''))")
-                fetched_value=$(provider_azure_fetch keyvault "$vault" "$secret_name" 2>/dev/null) || true
-                ;;
-            apim-subscription)
-                rg=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('resource_group',''))")
-                service=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('service',''))")
-                sub_id=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('subscription_id',''))")
-                key=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('key','primary'))")
-                fetched_value=$(provider_azure_fetch apim-subscription "$rg" "$service" "$sub_id" "$key" 2>/dev/null) || true
-                ;;
-            apim-named-value)
-                rg=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('resource_group',''))")
-                service=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('service',''))")
-                nv_id=$(echo "$secret_line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('named_value_id',''))")
-                fetched_value=$(provider_azure_fetch apim-named-value "$rg" "$service" "$nv_id" 2>/dev/null) || true
-                ;;
-            *)
-                echo "SKIP (unknown source: $source)"
-                failed=$((failed + 1))
-                continue
-                ;;
-        esac
+        printf "[%d/%d] Fetching %s" "$idx" "$total" "$name"
+        local fetched_value="" spec source tried=""
+        while IFS= read -r spec; do
+            source=$(_jget "$spec" source)
+            tried+="${tried:+ -> }$source"
+            fetched_value=$(_fetch_from_spec "$spec" "$subscription" 2>/dev/null) || fetched_value=""
+            [[ -n "$fetched_value" ]] && break
+        done <<< "$specs"
 
         if [[ -n "$fetched_value" ]]; then
             secret_set "$name" "$fetched_value"
-            echo "OK"
+            echo " from $source... OK"
             fetched=$((fetched + 1))
         else
-            echo "FAILED"
+            echo " from $tried... FAILED"
             failed=$((failed + 1))
         fi
-
-        # Switch back to environment subscription if we changed it
-        if [[ -n "$secret_subscription" && "$secret_subscription" != "$subscription" && -n "$subscription" ]]; then
-            provider_azure_set_subscription "$subscription" &>/dev/null
-        fi
-    done < <(echo "$secrets_json" | python3 -c "
-import json, sys
-secrets = json.load(sys.stdin)
-for s in secrets:
-    print(json.dumps(s))
-")
+        fetched_value=""
+    done <<< "$plan_lines"
 
     echo ""
-    echo "Fetched $fetched, static $static_count, failed $failed"
+    echo "Fetched $fetched, static $static_count, skipped $skipped, failed $failed"
 
     if [[ "$failed" -gt 0 ]]; then
         return 1
@@ -554,6 +626,12 @@ main() {
             --help|-h)
                 _print_usage
                 return 0
+                ;;
+            --source)
+                shift
+                [[ $# -eq 0 ]] && { echo "Error: --source requires a type argument" >&2; return 1; }
+                _SOURCE_FILTER="$1"
+                shift
                 ;;
             --manifest)
                 shift

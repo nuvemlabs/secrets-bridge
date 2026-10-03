@@ -12,6 +12,7 @@ Usage:
     python3 manifest.py <manifest-path> outputs <env>       # output definitions
     python3 manifest.py <manifest-path> envs                # environment names
     python3 manifest.py <manifest-path> azure-config <env>  # azure config
+    python3 manifest.py <manifest-path> fetch-plan <env> [source]  # JSON lines, source chains
 """
 
 import json
@@ -349,6 +350,60 @@ def cmd_secrets(manifest, env):
     return json.dumps(secrets)
 
 
+# Source type aliases accepted in manifests -> canonical provider source
+SOURCE_ALIASES = {
+    "azure-keyvault": "keyvault",
+    "keychain": "wallet",
+    "libsecret": "wallet",
+    "bw": "bitwarden",
+}
+
+# Keys that describe the secret itself rather than where it comes from
+_SECRET_LEVEL_KEYS = {"name", "secret", "value", "sources", "description"}
+
+
+def normalize_sources(secret):
+    """Return the ordered list of source specs for one secret.
+
+    A secret either names one source inline (``source: keyvault`` plus its
+    fields) or lists several under ``sources:``, tried in order until one
+    returns a value. Static entries (``value`` without a source) return [].
+    """
+    raw = secret.get("sources")
+    if raw is None:
+        if not secret.get("source"):
+            return []
+        raw = [{k: v for k, v in secret.items() if k not in _SECRET_LEVEL_KEYS}]
+    specs = []
+    for spec in raw:
+        spec = dict(spec)
+        source = str(spec.get("source", ""))
+        spec["source"] = SOURCE_ALIASES.get(source, source)
+        specs.append(spec)
+    return specs
+
+
+def cmd_fetch_plan(manifest, env, only_source=""):
+    """Return one JSON line per secret with its normalized source chain.
+
+    ``only_source`` keeps just the specs of that source type, so a caller can
+    force e.g. the local wallet or the remote Key Vault for a whole run.
+    """
+    only = SOURCE_ALIASES.get(only_source, only_source)
+    lines = []
+    for s in json.loads(cmd_secrets(manifest, env)):
+        specs = normalize_sources(s)
+        if only:
+            specs = [sp for sp in specs if sp["source"] == only]
+        lines.append(json.dumps({
+            "name": s.get("name", ""),
+            "static": "value" in s and not s.get("source") and not s.get("sources"),
+            "value": "" if s.get("value") is None else str(s.get("value", "")),
+            "sources": specs,
+        }))
+    return "\n".join(lines)
+
+
 def cmd_outputs(manifest, env):
     """Return output definitions for an environment."""
     envs = manifest.get("environments", {})
@@ -403,6 +458,14 @@ def main():
             print("Usage: manifest.py <path> outputs <env>", file=sys.stderr)
             sys.exit(1)
         print(cmd_outputs(manifest, sys.argv[3]))
+    elif command == "fetch-plan":
+        if len(sys.argv) < 4:
+            print("Usage: manifest.py <path> fetch-plan <env> [source]", file=sys.stderr)
+            sys.exit(1)
+        only = sys.argv[4] if len(sys.argv) > 4 else ""
+        out = cmd_fetch_plan(manifest, sys.argv[3], only)
+        if out:
+            print(out)
     elif command == "azure-config":
         if len(sys.argv) < 4:
             print("Usage: manifest.py <path> azure-config <env>", file=sys.stderr)
