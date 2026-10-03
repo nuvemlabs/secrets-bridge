@@ -101,6 +101,8 @@ Options:
   --manifest <path> Path to manifest file (default: ./.secrets-manifest.yml)
   --source <type>   Only use this source type: wallet, keyvault, bitwarden,
                     apim-subscription, apim-named-value (env: SECRETS_BRIDGE_SOURCE)
+  --version         Print version
+  --help            Show this help message
 
 Sources:
   keyvault          Azure Key Vault (az CLI)           fields: vault, secret
@@ -110,8 +112,6 @@ Sources:
   apim-subscription Azure APIM subscription key
   apim-named-value  Azure APIM named value
   A secret may list several under 'sources:'; they are tried in order.
-  --version         Print version
-  --help            Show this help message
 
 Examples:
   secrets-bridge validate
