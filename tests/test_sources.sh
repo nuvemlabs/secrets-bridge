@@ -12,7 +12,8 @@ MANIFEST="$REPO_ROOT/tests/fixtures/sources-manifest.yml"
 # The secrets library prefers macOS Keychain / Windows Credential Manager over
 # secret-tool, so the mock below would not intercept: skip rather than write
 # into a real wallet.
-if [[ "$OSTYPE" == darwin* ]] || command -v powershell.exe &>/dev/null || command -v pwsh &>/dev/null; then
+# Mirrors the library's backend detection: pwsh only means Credential Manager on Windows
+if [[ "$OSTYPE" == darwin* || "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]] || command -v powershell.exe &>/dev/null; then
     echo "SKIP: test_sources.sh needs the libsecret backend (Linux) to mock the wallet"
     exit 0
 fi

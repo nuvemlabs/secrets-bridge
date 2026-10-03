@@ -13,6 +13,10 @@ INSTALLER="$REPO_ROOT/install.sh"
 PASS=0
 FAIL=0
 
+# Lookup cases below control the library location themselves; an inherited
+# override (CI sets one) would win over every one of them
+unset SECRETS_LIB_PATH
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

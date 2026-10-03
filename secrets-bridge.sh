@@ -181,7 +181,7 @@ cmd_validate() {
 
     echo "Manifest: $_MANIFEST_PATH"
     echo "Project:  $project"
-    echo "Provider: $default_provider"
+    echo "Provider: ${default_provider:-(none)}"
     echo ""
 
     # Check the tool behind every source type the manifest uses
@@ -222,7 +222,10 @@ print(' '.join(sorted(used)))
         esac
     done
 
-    echo ""
+    # Blank line only after the checks block, if it printed anything
+    if [[ -n "${used_sources// /}" ]]; then
+        echo ""
+    fi
     echo "Environments ($env_count):"
 
     # For each environment, count secrets
@@ -256,7 +259,7 @@ cmd_plan() {
     local plan_lines
     plan_lines=$(_parse_manifest fetch-plan "$env" "$_SOURCE_FILTER") || return 1
 
-    echo "Project: $project | Environment: $env | Provider: $default_provider${_SOURCE_FILTER:+ | Source filter: $_SOURCE_FILTER}"
+    echo "Project: $project | Environment: $env | Provider: ${default_provider:-(none)}${_SOURCE_FILTER:+ | Source filter: $_SOURCE_FILTER}"
     echo ""
     printf "  %-35s %-20s %s\n" "NAME" "SOURCE" "RESOURCE"
     echo ""

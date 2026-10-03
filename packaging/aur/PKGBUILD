@@ -1,0 +1,32 @@
+# Maintainer: Daniel Paiva <danielpmo at gmail dot com>
+pkgname=nuvemlabs-secrets-bridge
+pkgver=1.1.0
+pkgrel=1
+pkgdesc="Fetch cloud and wallet secrets into local .env, Postman and Bruno files"
+arch=('any')
+url="https://github.com/nuvemlabs/secrets-bridge"
+license=('MIT')
+depends=('bash' 'python' 'nuvemlabs-secrets')
+optdepends=('azure-cli: Azure Key Vault and APIM sources'
+            'bitwarden-cli: Bitwarden sources')
+makedepends=('git')
+source=("$pkgname::git+$url.git#tag=v$pkgver")
+sha256sums=('SKIP')
+
+check() {
+  cd "$pkgname"
+  # az, bw and secret-tool are mocked; the secrets library comes from the
+  # nuvemlabs-secrets dependency
+  local t
+  for t in tests/test_*.sh; do
+    bash "$t"
+  done
+}
+
+package() {
+  cd "$pkgname"
+  PREFIX=/usr DESTDIR="$pkgdir" bash install.sh
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 examples/.secrets-manifest.yml "$pkgdir/usr/share/doc/$pkgname/examples/secrets-manifest.yml"
+}

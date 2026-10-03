@@ -36,18 +36,24 @@ API testing tools like Postman and Bruno need environment files with secrets (AP
         +---> .env file
 ```
 
+## Install
+
+| Channel | Command |
+|---------|---------|
+| Homebrew (macOS, Linux) | `brew install nuvemlabs/tap/secrets-bridge` (pulls in `nuvemlabs/tap/secrets`) |
+| Arch (PKGBUILD) | `git clone https://github.com/nuvemlabs/secrets-bridge.git && cd secrets-bridge/packaging/aur && makepkg -si` (needs `nuvemlabs-secrets` installed first, same way) |
+| From source (any) | install [nuvemlabs/secrets](https://github.com/nuvemlabs/secrets#install), then `git clone https://github.com/nuvemlabs/secrets-bridge.git && cd secrets-bridge && bash install.sh` |
+
+The CLI finds the secrets library in this order: `SECRETS_LIB_PATH`, `~/.local/lib/secrets`, next to the
+`secrets-doctor` on your `PATH` (any packaged install), then `~/repos/secrets`. Set
+`SECRETS_BRIDGE_DEBUG_LIB=1` to print which copy it used.
+
+Packagers stage a system layout with `PREFIX=/usr DESTDIR="$pkgdir" bash install.sh`.
+
 ## Quick Start
 
 ```bash
-# 1. Install nuvemlabs/secrets (dependency)
-git clone https://github.com/nuvemlabs/secrets.git
-cd secrets && bash install.sh && cd ..
-
-# 2. Install secrets-bridge
-git clone https://github.com/nuvemlabs/secrets-bridge.git
-cd secrets-bridge && bash install.sh
-
-# 3. Create a manifest in your project
+# 1. Create a manifest in your project
 cat > .secrets-manifest.yml <<'YAML'
 project: my-api-tests
 default_provider: azure
@@ -71,7 +77,7 @@ environments:
         file: .env.sit
 YAML
 
-# 4. Sync (fetch + generate)
+# 2. Sync (fetch + generate)
 az login
 secrets-bridge sync sit
 ```
@@ -278,7 +284,19 @@ See `providers/azure.sh` for a complete reference implementation.
 | [nuvemlabs/secrets](https://github.com/nuvemlabs/secrets) | OS-native keychain access (macOS Keychain, libsecret, Windows Credential Manager) |
 | bash | Shell runtime |
 | python3 | YAML parsing, JSON generation |
-| az CLI | Azure Key Vault and APIM access |
+| az CLI | Azure Key Vault and APIM access (`azure` sources only) |
+| bw CLI | Bitwarden vault access (`bitwarden` sources only) |
+
+## Development
+
+```bash
+for t in tests/test_*.sh; do bash "$t" || echo "FAILED: $t"; done
+```
+
+The suites mock `az`, `bw` and `secret-tool`, so no cloud or real store is touched, but they need the
+nuvemlabs/secrets library (found as described under Install; CI checks it out and sets `SECRETS_LIB_PATH`).
+Packaging sources live in
+`packaging/` (AUR `PKGBUILD` + `.SRCINFO`, Homebrew formula).
 
 ## License
 
