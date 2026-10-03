@@ -1,45 +1,74 @@
 #!/bin/bash
 set -euo pipefail
 
-_bridge_source="${BASH_SOURCE[0]}"
-while [[ -L "$_bridge_source" ]]; do
-    _bridge_source="$(readlink "$_bridge_source")"
-done
-BRIDGE_DIR="$(cd "$(dirname "$_bridge_source")" && pwd)"
-unset _bridge_source
-BRIDGE_VERSION="1.0.0"
+# Follow a symlink chain to the real file. Relative targets resolve against
+# the link's own directory (Homebrew links are relative).
+_resolve_link() {
+    local path="$1" target
+    while [[ -L "$path" ]]; do
+        target="$(readlink "$path")"
+        if [[ "$target" == /* ]]; then
+            path="$target"
+        else
+            path="$(dirname "$path")/$target"
+        fi
+    done
+    echo "$path"
+}
+
+BRIDGE_DIR="$(cd "$(dirname "$(_resolve_link "${BASH_SOURCE[0]}")")" && pwd)"
+BRIDGE_VERSION="1.1.0"
 
 # ---------------------------------------------------------------------------
 #   Dependency: nuvemlabs/secrets library
 # ---------------------------------------------------------------------------
 
-_secrets_lib_found=false
+# Print the path of the secrets library, first match wins:
+#   1. SECRETS_LIB_PATH (explicit override)
+#   2. ~/.local/lib/secrets (per-user install.sh)
+#   3. next to the secrets-doctor on PATH: every install, packaged or not,
+#      puts the CLI in <prefix>/bin and the library in <prefix>/lib/secrets
+#   4. ~/repos/secrets (development checkout)
+_find_secrets_lib() {
+    if [[ -n "${SECRETS_LIB_PATH:-}" ]]; then
+        if [[ -f "$SECRETS_LIB_PATH" ]]; then
+            echo "$SECRETS_LIB_PATH"
+            return 0
+        fi
+        echo "Warning: SECRETS_LIB_PATH=$SECRETS_LIB_PATH does not exist; searching the usual places" >&2
+    fi
+    if [[ -f "$HOME/.local/lib/secrets/secrets.sh" ]]; then
+        echo "$HOME/.local/lib/secrets/secrets.sh"
+        return 0
+    fi
+    local doctor candidate
+    if doctor="$(command -v secrets-doctor 2>/dev/null)"; then
+        candidate="$(dirname "$(_resolve_link "$doctor")")/../lib/secrets/secrets.sh"
+        if [[ -f "$candidate" ]]; then
+            echo "$(cd "$(dirname "$candidate")" && pwd)/secrets.sh"
+            return 0
+        fi
+    fi
+    if [[ -f "$HOME/repos/secrets/secrets.sh" ]]; then
+        echo "$HOME/repos/secrets/secrets.sh"
+        return 0
+    fi
+    return 1
+}
 
-# 1. Installed location
-if [[ -f "$HOME/.local/lib/secrets/secrets.sh" ]]; then
-    source "$HOME/.local/lib/secrets/secrets.sh"
-    _secrets_lib_found=true
-# 2. User override via environment variable
-elif [[ -n "${SECRETS_LIB_PATH:-}" && -f "$SECRETS_LIB_PATH" ]]; then
-    source "$SECRETS_LIB_PATH"
-    _secrets_lib_found=true
-# 3. Development location (sibling repo)
-elif [[ -f "$HOME/repos/secrets/secrets.sh" ]]; then
-    source "$HOME/repos/secrets/secrets.sh"
-    _secrets_lib_found=true
-fi
-
-if [[ "$_secrets_lib_found" != true ]]; then
+if ! SECRETS_LIB_FILE="$(_find_secrets_lib)"; then
     echo "Error: nuvemlabs/secrets library not found." >&2
     echo "" >&2
     echo "Install it from: https://github.com/nuvemlabs/secrets" >&2
-    echo "  git clone https://github.com/nuvemlabs/secrets.git" >&2
-    echo "  cd secrets && bash install.sh" >&2
+    echo "  brew install nuvemlabs/tap/secrets" >&2
+    echo "  or: git clone https://github.com/nuvemlabs/secrets.git && cd secrets && bash install.sh" >&2
     echo "" >&2
     echo "Or set SECRETS_LIB_PATH to the path of secrets.sh" >&2
     exit 1
 fi
-unset _secrets_lib_found
+[[ "${SECRETS_BRIDGE_DEBUG_LIB:-0}" == "1" ]] && echo "secrets lib: $SECRETS_LIB_FILE" >&2
+# shellcheck source=/dev/null
+source "$SECRETS_LIB_FILE"
 
 # ---------------------------------------------------------------------------
 #   Source components
@@ -497,16 +526,7 @@ for entry in resolved:
         pass
 
 print(json.dumps(resolved))
-" "$resolved_json" "$SECRETS_SERVICE" "$(
-    # Find secrets.sh path
-    if [[ -f "$HOME/.local/lib/secrets/secrets.sh" ]]; then
-        echo "$HOME/.local/lib/secrets/secrets.sh"
-    elif [[ -n "${SECRETS_LIB_PATH:-}" && -f "$SECRETS_LIB_PATH" ]]; then
-        echo "$SECRETS_LIB_PATH"
-    elif [[ -f "$HOME/repos/secrets/secrets.sh" ]]; then
-        echo "$HOME/repos/secrets/secrets.sh"
-    fi
-)")
+" "$resolved_json" "$SECRETS_SERVICE" "$SECRETS_LIB_FILE")
 
     # Generate each output
     while IFS= read -r output_line; do

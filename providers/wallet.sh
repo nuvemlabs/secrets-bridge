@@ -35,6 +35,7 @@ provider_wallet_fetch() {
     local service="${1:-$SECRETS_BRIDGE_WALLET_SERVICE}" key="$2"
     [[ -z "$key" ]] && { echo "Error: wallet key required" >&2; return 1; }
     (
+        # shellcheck disable=SC2034  # read by secret()
         SECRETS_SERVICE="$service"
         secret "$key"
     )

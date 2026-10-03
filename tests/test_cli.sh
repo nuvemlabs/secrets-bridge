@@ -58,7 +58,7 @@ echo ""
 # Test 1: --version prints version
 echo "Test 1: --version"
 result=$(bash "$CLI" --version 2>&1)
-assert_contains "version string" "secrets-bridge v1.0.0" "$result"
+assert_contains "version string" "secrets-bridge v1.1.0" "$result"
 
 # Test 2: --help prints usage
 echo "Test 2: --help"
