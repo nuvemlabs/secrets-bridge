@@ -77,3 +77,16 @@
 - Task 18: Created README.md following secrets lib style: badges, problem/dataflow, quick start, CLI ref, manifest ref, Azure setup, output formats, security model. Committed.
 - Task 19: Created examples/.secrets-manifest.yml with SIT/UAT/PRE environments using real TD Azure resource names and Postman variable names. Committed.
 - All 97 tests across 6 suites pass. 4 atomic commits made for Tasks 16-19.
+
+## 2026-10-03 — v1.1.0: packaging, CI, Homebrew formula
+
+### Decisions
+- D1 (2026-10-03) packaging: separate Homebrew formula `nuvemlabs/tap/secrets-bridge` with `depends_on "nuvemlabs/tap/secrets"` — assumptions: user asked for its own brew install pulling in secrets — undo: drop Formula/secrets-bridge.rb from the tap
+- D2 (2026-10-03) lib lookup: SECRETS_LIB_PATH → ~/.local → next to secrets-doctor on PATH → ~/repos/secrets — assumptions: every secrets install puts the CLI in <prefix>/bin and the library in <prefix>/lib/secrets — undo: revert f46c5e3
+- D3 (2026-10-03) release: shipped feat/wallet-bitwarden-sources in v1.1.0 — assumptions: its suites pass and it was already installed and in use locally — undo: none needed (additive feature)
+
+### Log
+- f46c5e3 lib lookup via secrets-doctor, relative symlink walk, install.sh PREFIX/DESTDIR, tests/test_install.sh
+- d17e8cf README install channels, CI (shellcheck + suites on Linux/macOS vs secrets v1.1.1), validate output fix, PKGBUILD
+- v1.1.0 tagged + GitHub release; tap formula installed, `brew test` passes, `brew audit --strict --online` clean; fresh-HOME brew-only run finds the brew secrets library
+- AUR: ~/repos/aur-nuvemlabs-secrets-bridge committed, push waits on an AUR account (see ~/repos/secrets/workflow_state.md)
