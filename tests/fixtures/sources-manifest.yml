@@ -58,3 +58,16 @@ environments:
     outputs:
       - format: dotenv
         file: .env.broken
+
+  kvdenied:
+    secrets:
+      - name: DENIED
+        source: keyvault
+        vault: kv-home
+        secret: forbidden-secret
+      - name: REGION
+        value: home
+        secret: false
+    outputs:
+      - format: dotenv
+        file: .env.kvdenied

@@ -162,6 +162,16 @@ fail_out=$(bash "$CLI" fetch broken) || rc=$?
 assert_eq "exit 1 when nothing resolves" "1" "$rc"
 assert_contains "lists every source tried" "from wallet -> bitwarden... FAILED" "$fail_out"
 
+echo "=== inline keyvault spec keeps its secret name ==="
+
+assert_eq "inline keyvault spec carries secret" "pve-token" \
+    "$(python3 "$REPO_ROOT/lib/manifest.py" .secrets-manifest.yml fetch-plan terraform | python3 -c "import json,sys; print(json.loads(sys.stdin.readline())['sources'][0].get('secret',''))")"
+assert_eq "boolean secret flag stays off the source spec" "" \
+    "$(python3 "$REPO_ROOT/lib/manifest.py" .secrets-manifest.yml fetch-plan kvdenied | sed -n 2p | python3 -c "import json,sys; print(json.loads(sys.stdin.readline())['sources'])" | tr -d '[]')"
+tf_out=$(bash "$CLI" sync terraform)
+assert_contains "inline keyvault fetched" "TF_VAR_proxmox_api_token from keyvault... OK" "$tf_out"
+assert_contains "inline keyvault value in dotenv" "TF_VAR_PROXMOX_API_TOKEN=kv-pve-token" "$(cat .env.terraform)"
+
 echo "=== validate ==="
 
 validate_out=$(bash "$CLI" validate)

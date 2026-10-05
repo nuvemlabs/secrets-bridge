@@ -359,7 +359,15 @@ SOURCE_ALIASES = {
 }
 
 # Keys that describe the secret itself rather than where it comes from
-_SECRET_LEVEL_KEYS = {"name", "secret", "value", "sources", "description"}
+_SECRET_LEVEL_KEYS = {"name", "value", "sources", "description"}
+
+
+def _is_source_field(key, value):
+    """``secret`` is overloaded: a boolean marks sensitivity (secret-level),
+    a string names the Key Vault secret (source-level)."""
+    if key == "secret":
+        return not isinstance(value, bool)
+    return key not in _SECRET_LEVEL_KEYS
 
 
 def normalize_sources(secret):
@@ -373,7 +381,7 @@ def normalize_sources(secret):
     if raw is None:
         if not secret.get("source"):
             return []
-        raw = [{k: v for k, v in secret.items() if k not in _SECRET_LEVEL_KEYS}]
+        raw = [{k: v for k, v in secret.items() if _is_source_field(k, v)}]
     specs = []
     for spec in raw:
         spec = dict(spec)
