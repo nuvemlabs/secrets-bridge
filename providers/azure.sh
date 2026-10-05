@@ -28,7 +28,7 @@ provider_azure_set_subscription() {
 provider_azure_fetch_keyvault() {
     local vault="$1" secret_name="$2"
     [[ -z "$vault" || -z "$secret_name" ]] && { echo "Error: vault and secret name required" >&2; return 1; }
-    az keyvault secret show --vault-name "$vault" --name "$secret_name" --query "value" --output tsv 2>/dev/null
+    az keyvault secret show --vault-name "$vault" --name "$secret_name" --query "value" --output tsv
 }
 
 # Fetch APIM subscription key via REST API
@@ -39,14 +39,14 @@ provider_azure_fetch_apim_subscription() {
     azure_sub_id=$(az account show --query id -o tsv)
     az rest --method post \
         --uri "/subscriptions/${azure_sub_id}/resourceGroups/${rg}/providers/Microsoft.ApiManagement/service/${service}/subscriptions/${sub_id}/listSecrets?api-version=2022-08-01" \
-        --query "${key_type}Key" --output tsv 2>/dev/null
+        --query "${key_type}Key" --output tsv
 }
 
 # Fetch APIM named value
 provider_azure_fetch_apim_named_value() {
     local rg="$1" service="$2" nv_id="$3"
     [[ -z "$rg" || -z "$service" || -z "$nv_id" ]] && { echo "Error: resource_group, service, and named_value_id required" >&2; return 1; }
-    az apim nv show-secret --resource-group "$rg" --service-name "$service" --named-value-id "$nv_id" --query "value" --output tsv 2>/dev/null
+    az apim nv show-secret --resource-group "$rg" --service-name "$service" --named-value-id "$nv_id" --query "value" --output tsv
 }
 
 # Dispatch fetch based on source type

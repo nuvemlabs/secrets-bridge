@@ -321,6 +321,15 @@ print('' if v is None else v)
 " "$1" "$2" "${3:-}"
 }
 
+# One-line reason for a failed fetch, from the provider's stderr: prefer the
+# az-style "ERROR:" line, else the last non-empty line.
+_failure_reason() {
+    local err_file="$1" reason
+    reason=$(grep -m1 '^ERROR' "$err_file" 2>/dev/null) \
+        || reason=$(grep -v '^[[:space:]]*$' "$err_file" 2>/dev/null | tail -n 1)
+    echo "${reason:-no value returned}"
+}
+
 # Fetch one value from one source spec (JSON). Prints the value on stdout.
 # $2 is the environment's default Azure subscription.
 _fetch_from_spec() {
@@ -399,7 +408,10 @@ cmd_fetch() {
     SECRETS_SERVICE="secrets-bridge:${project}"
 
     local total fetched=0 static_count=0 failed=0 skipped=0
+    local -a failed_names=()
     total=$(printf '%s\n' "$plan_lines" | grep -c . || true)
+    local err_file
+    err_file=$(mktemp)
 
     [[ -n "$_SOURCE_FILTER" ]] && echo "Source filter: $_SOURCE_FILTER"
 
@@ -437,12 +449,13 @@ for s in json.loads(sys.argv[1])['sources']:
         fi
 
         printf "[%d/%d] Fetching %s" "$idx" "$total" "$name"
-        local fetched_value="" spec source tried=""
+        local fetched_value="" spec source tried="" reasons=""
         while IFS= read -r spec; do
             source=$(_jget "$spec" source)
             tried+="${tried:+ -> }$source"
-            fetched_value=$(_fetch_from_spec "$spec" "$subscription" 2>/dev/null) || fetched_value=""
+            fetched_value=$(_fetch_from_spec "$spec" "$subscription" 2>"$err_file") || fetched_value=""
             [[ -n "$fetched_value" ]] && break
+            reasons+="       ${source}: $(_failure_reason "$err_file")"$'\n'
         done <<< "$specs"
 
         if [[ -n "$fetched_value" ]]; then
@@ -451,13 +464,21 @@ for s in json.loads(sys.argv[1])['sources']:
             fetched=$((fetched + 1))
         else
             echo " from $tried... FAILED"
+            printf '%s' "$reasons"
             failed=$((failed + 1))
+            failed_names+=("$name")
         fi
         fetched_value=""
     done <<< "$plan_lines"
+    rm -f "$err_file"
 
     echo ""
     echo "Fetched $fetched, static $static_count, skipped $skipped, failed $failed"
+    if [[ "$failed" -gt 0 ]]; then
+        local joined
+        joined=$(printf ', %s' "${failed_names[@]}")
+        echo "Failed: ${joined:2}"
+    fi
 
     if [[ "$failed" -gt 0 ]]; then
         return 1
@@ -531,6 +552,17 @@ for entry in resolved:
 print(json.dumps(resolved))
 " "$resolved_json" "$SECRETS_SERVICE" "$SECRETS_LIB_FILE")
 
+    # Fetched (non-static) secrets with no cached value end up empty in every file
+    local missing
+    missing=$(python3 -c "
+import json, sys
+secrets = {s.get('name', ''): s for s in json.loads(sys.argv[1])}
+print(', '.join(e['name'] for e in json.loads(sys.argv[2])
+                if not e['value'] and 'value' not in secrets.get(e['name'], {})))
+" "$secrets_json" "$final_json")
+    local suffix=""
+    [[ -n "$missing" ]] && suffix=", missing: $missing"
+
     # Generate each output
     while IFS= read -r output_line; do
         local format file_path
@@ -540,15 +572,15 @@ print(json.dumps(resolved))
         case "$format" in
             postman)
                 output_postman_generate "$project" "$env" "$file_path" "$final_json"
-                echo "Generated $file_path (postman)"
+                echo "Generated $(_abs_path "$file_path") (postman)$suffix"
                 ;;
             bruno)
                 output_bruno_generate "$project" "$env" "$file_path" "$final_json"
-                echo "Generated $file_path (bruno)"
+                echo "Generated $(_abs_path "$file_path") (bruno)$suffix"
                 ;;
             dotenv)
                 output_dotenv_generate "$project" "$env" "$file_path" "$final_json"
-                echo "Generated $file_path (dotenv)"
+                echo "Generated $(_abs_path "$file_path") (dotenv)$suffix"
                 ;;
             *)
                 echo "Warning: Unknown output format '$format', skipping" >&2
@@ -566,9 +598,39 @@ cmd_sync() {
     local env="$1"
     [[ -z "$env" ]] && { echo "Usage: secrets-bridge sync <env>" >&2; return 1; }
 
-    cmd_fetch "$env" || return 1
+    if ! cmd_fetch "$env"; then
+        echo ""
+        echo "No output files written: fetch failed, so existing files are left as they were:"
+        _report_output_files "$env"
+        echo "Fix the failures above and re-run, or run 'secrets-bridge generate $env'"
+        echo "to write the files anyway with the values cached so far."
+        return 1
+    fi
     echo ""
     cmd_generate "$env"
+}
+
+# Absolute form of an output path (outputs are written relative to the CWD)
+_abs_path() {
+    if [[ "$1" == /* ]]; then echo "$1"; else echo "$PWD/$1"; fi
+}
+
+# List an environment's output files with whether each exists and when it was written
+_report_output_files() {
+    local env="$1" file_path abs
+    while IFS= read -r file_path; do
+        [[ -z "$file_path" ]] && continue
+        abs=$(_abs_path "$file_path")
+        if [[ -e "$abs" ]]; then
+            echo "  $abs (last written $(python3 -c "import os,sys,time; print(time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(sys.argv[1]))))" "$abs"))"
+        else
+            echo "  $abs (not present)"
+        fi
+    done < <(_parse_manifest outputs "$env" | python3 -c "
+import json, sys
+for o in json.load(sys.stdin):
+    print(o.get('file', ''))
+")
 }
 
 cmd_status() {

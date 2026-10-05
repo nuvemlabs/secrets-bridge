@@ -84,9 +84,12 @@
 - D1 (2026-10-03) packaging: separate Homebrew formula `nuvemlabs/tap/secrets-bridge` with `depends_on "nuvemlabs/tap/secrets"` — assumptions: user asked for its own brew install pulling in secrets — undo: drop Formula/secrets-bridge.rb from the tap
 - D2 (2026-10-03) lib lookup: SECRETS_LIB_PATH → ~/.local → next to secrets-doctor on PATH → ~/repos/secrets — assumptions: every secrets install puts the CLI in <prefix>/bin and the library in <prefix>/lib/secrets — undo: revert f46c5e3
 - D3 (2026-10-03) release: shipped feat/wallet-bitwarden-sources in v1.1.0 — assumptions: its suites pass and it was already installed and in use locally — undo: none needed (additive feature)
+- D4 (2026-10-06) manifest: a string `secret` is the Key Vault name (source field), a boolean `secret` is the sensitivity flag — assumptions: no manifest uses a string `secret` as a flag — undo: revert the "Keep the Key Vault secret name" commit
+- D5 (2026-10-06) reporting: az stderr is no longer discarded; fetch prints one reason line per failed source, sync names the failed secrets and the untouched output files, and generate prints absolute paths plus any missing values; a failed sync still writes no files — assumptions: provider errors never echo secret values (az errors do not) — undo: revert the "Say why a fetch failed" commit
 
 ### Log
 - f46c5e3 lib lookup via secrets-doctor, relative symlink walk, install.sh PREFIX/DESTDIR, tests/test_install.sh
 - d17e8cf README install channels, CI (shellcheck + suites on Linux/macOS vs secrets v1.1.1), validate output fix, PKGBUILD
 - v1.1.0 tagged + GitHub release; tap formula installed, `brew test` passes, `brew audit --strict --online` clean; fresh-HOME brew-only run finds the brew secrets library
 - AUR: ~/repos/aur-nuvemlabs-secrets-bridge committed, push waits on an AUR account (see ~/repos/secrets/workflow_state.md)
+- 2026-10-06 `just sync sit` in td/api-tests failed 3/28: inline keyvault specs lost `secret` (D4). Fixed, reporting improved (D5), all suites pass, reinstalled to ~/.local, SIT sync 28/28

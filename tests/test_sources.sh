@@ -91,6 +91,10 @@ case "$*" in
     "account set"*) exit 0 ;;
     *"--vault-name kv-home --name caddy-client-secret"*) echo "kv-caddy-secret" ;;
     *"--vault-name kv-home --name pve-token"*) echo "kv-pve-token" ;;
+    *"--vault-name kv-home --name forbidden-secret"*)
+        echo "WARNING: some az noise" >&2
+        echo "ERROR: (Forbidden) Caller is not authorized to get secrets" >&2
+        exit 1 ;;
     *) exit 1 ;;
 esac
 MOCK
@@ -171,6 +175,21 @@ assert_eq "boolean secret flag stays off the source spec" "" \
 tf_out=$(bash "$CLI" sync terraform)
 assert_contains "inline keyvault fetched" "TF_VAR_proxmox_api_token from keyvault... OK" "$tf_out"
 assert_contains "inline keyvault value in dotenv" "TF_VAR_PROXMOX_API_TOKEN=kv-pve-token" "$(cat .env.terraform)"
+assert_contains "generate prints the absolute path" "Generated $PWD/.env.terraform (dotenv)" "$tf_out"
+
+echo "=== failure diagnostics ==="
+
+rc=0
+denied_out=$(bash "$CLI" sync kvdenied 2>&1) || rc=$?
+assert_eq "sync exits 1 on a failed secret" "1" "$rc"
+assert_contains "shows the provider's error" "keyvault: ERROR: (Forbidden) Caller is not authorized to get secrets" "$denied_out"
+assert_contains "summary names the failed secrets" "Failed: DENIED" "$denied_out"
+assert_contains "says no files were written" "No output files written" "$denied_out"
+assert_contains "shows where the file would go" "$PWD/.env.kvdenied (not present)" "$denied_out"
+assert_eq "no file written on failure" "absent" "$([[ -e .env.kvdenied ]] && echo present || echo absent)"
+
+gen_out=$(bash "$CLI" generate kvdenied 2>&1)
+assert_contains "forced generate flags missing values" "missing: DENIED" "$gen_out"
 
 echo "=== validate ==="
 
