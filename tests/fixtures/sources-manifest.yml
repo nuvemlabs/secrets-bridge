@@ -59,6 +59,20 @@ environments:
       - format: dotenv
         file: .env.broken
 
+  bwnofield:
+    secrets:
+      - name: NO_FIELD
+        source: bitwarden
+        item: homelab/tmdb
+        field: no_such_field
+      - name: NO_ITEM_FIELD
+        source: bitwarden
+        item: homelab/does-not-exist
+        field: api_key
+    outputs:
+      - format: dotenv
+        file: .env.bwnofield
+
   kvdenied:
     secrets:
       - name: DENIED

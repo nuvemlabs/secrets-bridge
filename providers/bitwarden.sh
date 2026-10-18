@@ -25,19 +25,24 @@ provider_bitwarden_fetch() {
     [[ -z "$item" ]] && { echo "Error: bitwarden item required" >&2; return 1; }
     case "$field" in
         password|username|notes|totp)
-            bw get "$field" "$item" 2>/dev/null
+            bw get "$field" "$item"
             ;;
         *)
             # Custom field: read it from the item JSON inside python so the
-            # value only ever travels on stdout.
-            bw get item "$item" 2>/dev/null | python3 -c "
+            # value only ever travels on stdout. A failed `bw get item` prints
+            # nothing here; exit quietly so bw's own error stays the reason.
+            bw get item "$item" | python3 -c "
 import json, sys
 field = sys.argv[1]
-item = json.load(sys.stdin)
+raw = sys.stdin.read()
+if not raw.strip():
+    sys.exit(1)
+item = json.loads(raw)
 for f in item.get('fields') or []:
     if f.get('name') == field:
         sys.stdout.write(f.get('value') or '')
         sys.exit(0)
+sys.stderr.write('Error: field %r not found on item\\n' % field)
 sys.exit(1)
 " "$field"
             ;;
