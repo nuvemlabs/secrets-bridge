@@ -17,7 +17,7 @@ _resolve_link() {
 }
 
 BRIDGE_DIR="$(cd "$(dirname "$(_resolve_link "${BASH_SOURCE[0]}")")" && pwd)"
-BRIDGE_VERSION="1.1.0"
+BRIDGE_VERSION="1.1.1"
 
 # ---------------------------------------------------------------------------
 #   Dependency: nuvemlabs/secrets library
