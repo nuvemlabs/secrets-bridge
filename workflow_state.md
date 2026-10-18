@@ -86,6 +86,7 @@
 - D3 (2026-10-03) release: shipped feat/wallet-bitwarden-sources in v1.1.0 — assumptions: its suites pass and it was already installed and in use locally — undo: none needed (additive feature)
 - D4 (2026-10-06) manifest: a string `secret` is the Key Vault name (source field), a boolean `secret` is the sensitivity flag — assumptions: no manifest uses a string `secret` as a flag — undo: revert the "Keep the Key Vault secret name" commit
 - D5 (2026-10-06) reporting: az stderr is no longer discarded; fetch prints one reason line per failed source, sync names the failed secrets and the untouched output files, and generate prints absolute paths plus any missing values; a failed sync still writes no files — assumptions: provider errors never echo secret values (az errors do not) — undo: revert the "Say why a fetch failed" commit
+- D6 (2026-10-19) reporting: bw stderr is no longer discarded either, and a missing custom field says so; `bw status` in the check stays silenced (it is a probe) — assumptions: bw errors ("Not found.", "More than one result was found…", "You are not logged in.") never echo secret values, so D5 holds — undo: revert the "Show the Bitwarden error" commit
 
 ### Log
 - f46c5e3 lib lookup via secrets-doctor, relative symlink walk, install.sh PREFIX/DESTDIR, tests/test_install.sh

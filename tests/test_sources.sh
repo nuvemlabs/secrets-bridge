@@ -105,7 +105,7 @@ case "$*" in
     "status") echo '{"status":"unlocked"}' ;;
     "get password homelab/grafana") printf 'bw-grafana-pass' ;;
     "get item homelab/tmdb") echo '{"fields":[{"name":"api_key","value":"bw-tmdb-key"}]}' ;;
-    *) exit 1 ;;
+    *) echo "Not found." >&2; exit 1 ;;
 esac
 MOCK
 chmod +x "$MOCK_DIR"/*
@@ -165,6 +165,13 @@ rc=0
 fail_out=$(bash "$CLI" fetch broken) || rc=$?
 assert_eq "exit 1 when nothing resolves" "1" "$rc"
 assert_contains "lists every source tried" "from wallet -> bitwarden... FAILED" "$fail_out"
+assert_contains "shows bw's error" "bitwarden: Not found." "$fail_out"
+
+rc=0
+nofield_out=$(bash "$CLI" fetch bwnofield) || rc=$?
+assert_eq "exit 1 when a custom field is missing" "1" "$rc"
+assert_contains "names the missing custom field" "bitwarden: Error: field 'no_such_field' not found on item" "$nofield_out"
+assert_contains "missing item beats a JSON traceback" "bitwarden: Not found." "$nofield_out"
 
 echo "=== inline keyvault spec keeps its secret name ==="
 
