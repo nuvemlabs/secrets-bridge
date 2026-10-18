@@ -1,6 +1,6 @@
 # Maintainer: Daniel Paiva <danielpmo at gmail dot com>
 pkgname=nuvemlabs-secrets-bridge
-pkgver=1.1.0
+pkgver=1.1.1
 pkgrel=1
 pkgdesc="Fetch cloud and wallet secrets into local .env, Postman and Bruno files"
 arch=('any')

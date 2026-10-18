@@ -2,8 +2,8 @@ class SecretsBridge < Formula
   desc "Fetch cloud and wallet secrets into local .env, Postman and Bruno files"
   homepage "https://github.com/nuvemlabs/secrets-bridge"
   url "https://github.com/nuvemlabs/secrets-bridge.git",
-      tag:      "v1.1.0",
-      revision: "d17e8cfd920febeb7ddaa7a198d59f93a706206c"
+      tag:      "v1.1.1",
+      revision: "1b40ed80742c236f2d5cdba7b50d50b485dddc14"
   license "MIT"
   head "https://github.com/nuvemlabs/secrets-bridge.git", branch: "main"
 

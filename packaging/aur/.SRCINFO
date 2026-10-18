@@ -1,6 +1,6 @@
 pkgbase = nuvemlabs-secrets-bridge
 	pkgdesc = Fetch cloud and wallet secrets into local .env, Postman and Bruno files
-	pkgver = 1.1.0
+	pkgver = 1.1.1
 	pkgrel = 1
 	url = https://github.com/nuvemlabs/secrets-bridge
 	arch = any
@@ -11,7 +11,7 @@ pkgbase = nuvemlabs-secrets-bridge
 	depends = nuvemlabs-secrets
 	optdepends = azure-cli: Azure Key Vault and APIM sources
 	optdepends = bitwarden-cli: Bitwarden sources
-	source = nuvemlabs-secrets-bridge::git+https://github.com/nuvemlabs/secrets-bridge.git#tag=v1.1.0
+	source = nuvemlabs-secrets-bridge::git+https://github.com/nuvemlabs/secrets-bridge.git#tag=v1.1.1
 	sha256sums = SKIP
 
 pkgname = nuvemlabs-secrets-bridge
