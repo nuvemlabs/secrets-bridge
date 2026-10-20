@@ -78,6 +78,13 @@
 - Task 19: Created examples/.secrets-manifest.yml with SIT/UAT/PRE environments using real TD Azure resource names and Postman variable names. Committed.
 - All 97 tests across 6 suites pass. 4 atomic commits made for Tasks 16-19.
 
+## Open
+Checks still to run, carried over from the retired v1.0.0 next-steps plan (removed in card #154); the rest of it is covered by CI, the test suites and v1.1.x.
+- README examples: run every command example in the README and confirm the output matches what it documents.
+- Concurrent sync: `secrets-bridge sync sit` and `sync uat` in parallel both succeed, with no race on the keychain or output files.
+- Performance: a manifest with 50+ secrets fetches in under 30s.
+- Live integration: in ~/repos/td/api-tests, clean the generated files, `sync sit` and `sync uat`, then `just test NZTD sit|uat` pass and `git check-ignore` confirms the generated files are ignored.
+
 ## 2026-10-03 — v1.1.0: packaging, CI, Homebrew formula
 
 ### Decisions
@@ -95,3 +102,4 @@
 - AUR: ~/repos/aur-nuvemlabs-secrets-bridge committed, push waits on an AUR account (see ~/repos/secrets/workflow_state.md)
 - 2026-10-06 `just sync sit` in td/api-tests failed 3/28: inline keyvault specs lost `secret` (D4). Fixed, reporting improved (D5), all suites pass, reinstalled to ~/.local, SIT sync 28/28
 - 2026-10-19 v1.1.1 prepared (card #153): 1b40ed8 bumps BRIDGE_VERSION and is the commit to tag v1.1.1 (carries fe78f55, 6821f93, e10976f); formula tag/revision, PKGBUILD pkgver and .SRCINFO point at it. Tag push, GitHub release, tap and AUR pushes wait on Daniel
+- 2026-10-20 card #154: the next-steps plan file (still described v1.0.0 and CI to be set up) removed; its still-open checks moved to "Open" above
