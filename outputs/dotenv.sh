@@ -4,6 +4,8 @@
 
 # Resolve the directory this script lives in
 _DOTENV_OUTPUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=outputs/private_file.sh
+source "$_DOTENV_OUTPUT_DIR/private_file.sh"
 
 # Generate a dotenv file.
 #
@@ -32,6 +34,7 @@ output_dotenv_generate() {
     local output_dir
     output_dir="$(dirname "$output_file")"
     mkdir -p "$output_dir"
+    output_prepare_private_file "$output_file" || return 1
 
     # Generate the dotenv content
     {

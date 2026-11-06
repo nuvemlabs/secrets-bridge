@@ -104,6 +104,19 @@ assert_exit_code "empty secrets_json" 1 output_postman_generate "proj" "sit" "$o
 echo "Test 7: invalid JSON to template"
 assert_exit_code "invalid JSON" 1 bash -c 'echo "not json" | python3 '"$REPO_ROOT"'/outputs/postman_template.py'
 
+# Test 8: the file holds secrets, so only its owner may read it,
+# also when an older version left it world-readable
+echo "Test 8: output file is owner-only (0600)"
+file_mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+private_json='[{"name":"api_key","value":"s3cret","secret":true}]'
+private_outfile="$TMPDIR_TEST/private.postman_environment.json"
+output_postman_generate "test" "dev" "$private_outfile" "$private_json"
+assert_eq "new file is 0600" "600" "$(file_mode "$private_outfile")"
+chmod 644 "$private_outfile"
+output_postman_generate "test" "dev" "$private_outfile" "$private_json"
+assert_eq "existing 0644 file tightened to 0600" "600" "$(file_mode "$private_outfile")"
+assert_eq "rewritten file still holds the value" "true" "$(grep -q s3cret "$private_outfile" && echo true || echo false)"
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 

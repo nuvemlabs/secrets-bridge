@@ -2,6 +2,11 @@
 # Bruno environment file output generator for secrets-bridge.
 # Generates .bru environment files from secret values.
 
+# Resolve the directory this script lives in
+_BRUNO_OUTPUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=outputs/private_file.sh
+source "$_BRUNO_OUTPUT_DIR/private_file.sh"
+
 # Generate a Bruno environment .bru file.
 #
 # Arguments:
@@ -27,18 +32,20 @@ output_bruno_generate() {
     local output_dir
     output_dir="$(dirname "$output_file")"
     mkdir -p "$output_dir"
+    output_prepare_private_file "$output_file" || return 1
 
-    # Extract key-value pairs from JSON and write .bru format
+    # Extract key-value pairs from JSON and write .bru format. The JSON goes
+    # in on stdin: argv is visible to every local account (ps, /proc).
     {
         echo "vars {"
-        python3 -c "
+        printf '%s' "$secrets_json" | python3 -c "
 import json, sys
-secrets = json.loads(sys.argv[1])
+secrets = json.load(sys.stdin)
 for entry in secrets:
     name = entry.get('name', '')
     value = entry.get('value', '')
     print(f'  {name}: {value}')
-" "$secrets_json"
+"
         echo "}"
     } > "$output_file"
 }

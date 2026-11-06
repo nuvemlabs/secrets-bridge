@@ -4,6 +4,8 @@
 
 # Resolve the directory this script lives in
 _POSTMAN_OUTPUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=outputs/private_file.sh
+source "$_POSTMAN_OUTPUT_DIR/private_file.sh"
 
 # Generate a Postman environment JSON file.
 #
@@ -29,20 +31,22 @@ output_postman_generate() {
     local output_dir
     output_dir="$(dirname "$output_file")"
     mkdir -p "$output_dir"
+    output_prepare_private_file "$output_file" || return 1
 
-    # Build the input JSON for the template
+    # Build the input JSON for the template. The secrets go in on stdin:
+    # argv is visible to every local account (ps, /proc).
     local input_json
-    input_json=$(python3 -c "
+    input_json=$(printf '%s' "$secrets_json" | python3 -c "
 import json, sys
 project = sys.argv[1]
 environment = sys.argv[2]
-secrets = json.loads(sys.argv[3])
+secrets = json.load(sys.stdin)
 print(json.dumps({
     'project': project,
     'environment': environment,
     'secrets': secrets
 }))
-" "$project" "$environment" "$secrets_json")
+" "$project" "$environment")
 
     # Pipe through the template generator
     echo "$input_json" | python3 "$_POSTMAN_OUTPUT_DIR/postman_template.py" > "$output_file"
