@@ -503,13 +503,14 @@ cmd_generate() {
     local outputs_json
     outputs_json=$(_parse_manifest outputs "$env")
 
-    # Build secrets array with resolved values
+    # Build secrets array with resolved values. JSON that can carry secret
+    # values goes in on stdin or the environment, never argv: argv is
+    # visible to every local account (ps, /proc/<pid>/cmdline).
     local resolved_json
-    resolved_json=$(python3 -c "
-import json, sys, subprocess
+    resolved_json=$(printf '%s' "$secrets_json" | python3 -c "
+import json, sys
 
-secrets = json.loads(sys.argv[1])
-project = sys.argv[2]
+secrets = json.load(sys.stdin)
 
 resolved = []
 for s in secrets:
@@ -526,22 +527,25 @@ for s in secrets:
     })
 
 print(json.dumps(resolved))
-" "$secrets_json" "$project")
+")
 
     # Read each secret value from keychain
     local final_json
-    final_json=$(python3 -c "
-import json, sys, subprocess, os
+    final_json=$(printf '%s' "$resolved_json" | python3 -c "
+import json, sys, subprocess
 
-resolved = json.loads(sys.argv[1])
-service = sys.argv[2]
-secrets_lib = sys.argv[3]
+resolved = json.load(sys.stdin)
+service = sys.argv[1]
+secrets_lib = sys.argv[2]
 
+# Service, library path and name are positional parameters, so a manifest
+# name is never parsed as shell.
+read_secret = 'export SECRETS_SERVICE=\"\$1\"; source \"\$2\"; secret \"\$3\"'
 for entry in resolved:
     name = entry['name']
     try:
         result = subprocess.run(
-            ['bash', '-c', f'export SECRETS_SERVICE=\"{service}\"; source \"{secrets_lib}\"; secret \"{name}\"'],
+            ['bash', '-c', read_secret, '_', service, secrets_lib, name],
             capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
@@ -550,16 +554,16 @@ for entry in resolved:
         pass
 
 print(json.dumps(resolved))
-" "$resolved_json" "$SECRETS_SERVICE" "$SECRETS_LIB_FILE")
+" "$SECRETS_SERVICE" "$SECRETS_LIB_FILE")
 
     # Fetched (non-static) secrets with no cached value end up empty in every file
     local missing
-    missing=$(python3 -c "
-import json, sys
-secrets = {s.get('name', ''): s for s in json.loads(sys.argv[1])}
-print(', '.join(e['name'] for e in json.loads(sys.argv[2])
+    missing=$(printf '%s' "$final_json" | SB_MANIFEST_SECRETS="$secrets_json" python3 -c "
+import json, os, sys
+secrets = {s.get('name', ''): s for s in json.loads(os.environ['SB_MANIFEST_SECRETS'])}
+print(', '.join(e['name'] for e in json.load(sys.stdin)
                 if not e['value'] and 'value' not in secrets.get(e['name'], {})))
-" "$secrets_json" "$final_json")
+")
     local suffix=""
     [[ -n "$missing" ]] && suffix=", missing: $missing"
 
