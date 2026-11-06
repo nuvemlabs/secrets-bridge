@@ -272,6 +272,7 @@ See `providers/azure.sh` for a complete reference implementation.
 ## Security Model
 
 - **Secrets never touch disk** (except OS-native keychain storage and generated output files)
+- **Generated output files are owner-only** -- written with mode `0600`, and an existing file is tightened on the next `generate`/`sync`
 - **Keychain namespace isolation** via `SECRETS_SERVICE="secrets-bridge:{project}"`
 - **Output files should be gitignored** -- add `*.postman_environment.json`, `.env.*` to `.gitignore`
 - **Manifest contains no secret values** -- only references to where secrets live in the cloud
