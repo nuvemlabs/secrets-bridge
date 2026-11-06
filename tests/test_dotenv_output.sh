@@ -117,6 +117,19 @@ assert_eq "special chars quoted" 'PASS="p@ss$word!"' "$line3"
 line4=$(sed -n '4p' "$outfile4")
 assert_eq "plain unquoted" "PLAIN=simple" "$line4"
 
+# Test 9: the file holds secrets, so only its owner may read it,
+# also when an older version left it world-readable
+echo "Test 9: output file is owner-only (0600)"
+file_mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+private_json='[{"name":"api_key","value":"s3cret","secret":true}]'
+private_outfile="$TMPDIR_TEST/.env.private"
+output_dotenv_generate "test" "dev" "$private_outfile" "$private_json"
+assert_eq "new file is 0600" "600" "$(file_mode "$private_outfile")"
+chmod 644 "$private_outfile"
+output_dotenv_generate "test" "dev" "$private_outfile" "$private_json"
+assert_eq "existing 0644 file tightened to 0600" "600" "$(file_mode "$private_outfile")"
+assert_eq "rewritten file still holds the value" "true" "$(grep -q s3cret "$private_outfile" && echo true || echo false)"
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 

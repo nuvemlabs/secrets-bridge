@@ -116,6 +116,31 @@ assert_exit_code "bad manifest path" 1 bash "$CLI" --manifest "/tmp/nonexistent-
 echo "Test 10: plan without env"
 assert_exit_code "plan no env" 1 bash "$CLI" --manifest "$MANIFEST" plan
 
+# Test 11: generate never runs a manifest secret name as shell. A stub
+# secrets library answers every read, so no real keychain is touched.
+echo "Test 11: secret name with \$(...) is not executed by generate"
+INJECT_DIR="$(mktemp -d)"
+cat > "$INJECT_DIR/secrets.sh" <<'STUB'
+secret() { printf 'value-for-%s' "$1"; }
+STUB
+cat > "$INJECT_DIR/manifest.yml" <<YAML
+project: injection-test
+environments:
+  dev:
+    secrets:
+      - name: 'pwn\$(touch $INJECT_DIR/PWNED)'
+        value: static
+    outputs:
+      - format: dotenv
+        file: $INJECT_DIR/.env.dev
+YAML
+inject_rc=0
+(cd "$INJECT_DIR" && SECRETS_LIB_PATH="$INJECT_DIR/secrets.sh" bash "$CLI" --manifest "$INJECT_DIR/manifest.yml" generate dev >/dev/null 2>&1) || inject_rc=$?
+assert_eq "generate succeeds" "0" "$inject_rc"
+assert_eq "command in secret name not executed" "absent" "$([[ -e "$INJECT_DIR/PWNED" ]] && echo present || echo absent)"
+assert_contains "name reaches the keychain read verbatim" "value-for-pwn\$(touch $INJECT_DIR/PWNED)" "$(cat "$INJECT_DIR/.env.dev" 2>/dev/null)"
+rm -rf "$INJECT_DIR"
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 

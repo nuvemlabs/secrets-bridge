@@ -93,6 +93,19 @@ nested_outfile="$TMPDIR_TEST/nested/dir/test.bru"
 output_bruno_generate "test" "dev" "$nested_outfile" "$secrets_json"
 assert_eq "nested file exists" "true" "$([ -f "$nested_outfile" ] && echo true || echo false)"
 
+# Test 7: the file holds secrets, so only its owner may read it,
+# also when an older version left it world-readable
+echo "Test 7: output file is owner-only (0600)"
+file_mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+private_json='[{"name":"api_key","value":"s3cret","secret":true}]'
+private_outfile="$TMPDIR_TEST/private.bru"
+output_bruno_generate "test" "dev" "$private_outfile" "$private_json"
+assert_eq "new file is 0600" "600" "$(file_mode "$private_outfile")"
+chmod 644 "$private_outfile"
+output_bruno_generate "test" "dev" "$private_outfile" "$private_json"
+assert_eq "existing 0644 file tightened to 0600" "600" "$(file_mode "$private_outfile")"
+assert_eq "rewritten file still holds the value" "true" "$(grep -q s3cret "$private_outfile" && echo true || echo false)"
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 
